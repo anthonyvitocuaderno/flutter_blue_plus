@@ -27,6 +27,7 @@ class FlutterBluePlus {
   static FlutterBluePlus get instance => _instance;
 
   void reset() {
+    // TEST COMMENT
     _instance = FlutterBluePlus._();
   }
 
