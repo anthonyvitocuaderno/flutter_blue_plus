@@ -31,6 +31,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.ParcelUuid;
 import android.util.Log;
+import java.lang.reflect.Method;
 
 import com.google.protobuf.ByteString;
 import com.google.protobuf.InvalidProtocolBufferException;
@@ -44,7 +45,6 @@ import java.util.Set;
 import java.util.UUID;
 
 import androidx.annotation.NonNull;
-import androidx.annotation.RequiresApi;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
@@ -228,15 +228,6 @@ public class FlutterBluePlusPlugin implements FlutterPlugin, MethodCallHandler, 
         break;
       }
 
-      case "name":
-      {
-        String name = mBluetoothAdapter.getName();
-        if (name == null)
-          name = "";
-        result.success(name);
-        break;
-      }
-
       case "turnOn":
       {
         if (!mBluetoothAdapter.isEnabled()) {
@@ -337,15 +328,15 @@ public class FlutterBluePlusPlugin implements FlutterPlugin, MethodCallHandler, 
           }
 
           // If device was connected to previously but is now disconnected, attempt a reconnect
-          BluetoothDeviceCache bluetoothDeviceCache = mDevices.get(deviceId);
-          if(bluetoothDeviceCache != null && !isConnected) {
-            if(bluetoothDeviceCache.gatt.connect()){
-              result.success(null);
-            } else {
-              result.error("reconnect_error", "error when reconnecting to device", null);
-            }
-            return;
-          }
+          BluetoothDeviceCache bluetoothDeviceCache = mDevices.remove(deviceId);//mDevices.get(deviceId);
+//          if(bluetoothDeviceCache != null && !isConnected) {
+//            if(bluetoothDeviceCache.gatt.connect()){
+//              result.success(null);
+//            } else {
+//              result.error("reconnect_error", "error when reconnecting to device", null);
+//            }
+//            return;
+//          }
 
           // New request, connect and add gattServer to Map
           BluetoothGatt gattServer;
@@ -354,18 +345,24 @@ public class FlutterBluePlusPlugin implements FlutterPlugin, MethodCallHandler, 
           } else {
             gattServer = device.connectGatt(context, options.getAndroidAutoConnect(), mGattCallback);
           }
+
+          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            try {
+              // BluetoothGatt gatt
+              final Method refresh = gattServer.getClass().getMethod("refresh");
+              if (refresh != null) {
+                log(LogLevel.DEBUG, "invoke method 'refresh' on gattServer.");
+                refresh.invoke(gattServer);
+                log(LogLevel.DEBUG, "invoked method 'refresh' on gattServer.");
+              }
+            } catch (Exception e) {
+              log(LogLevel.ERROR, "could not invoke method 'refresh' on gatt. " + e.toString());
+            }
+          }
+
           mDevices.put(deviceId, new BluetoothDeviceCache(gattServer));
           result.success(null);
         });
-        break;
-      }
-
-      case "pair":
-      {
-        String deviceId = (String)call.arguments;
-        BluetoothDevice device = mBluetoothAdapter.getRemoteDevice(deviceId);
-        device.createBond();
-        result.success(null);
         break;
       }
 
@@ -880,33 +877,15 @@ public class FlutterBluePlusPlugin implements FlutterPlugin, MethodCallHandler, 
     BluetoothLeScanner scanner = mBluetoothAdapter.getBluetoothLeScanner();
     if(scanner == null) throw new IllegalStateException("getBluetoothLeScanner() is null. Is the Adapter on?");
     int scanMode = proto.getAndroidScanMode();
-    List<ScanFilter> filters = fetchFilters(proto);
-    ScanSettings settings = new ScanSettings.Builder().setScanMode(scanMode).build();
-    scanner.startScan(filters, settings, getScanCallback21());
-  }
-
-  @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
-  private List<ScanFilter> fetchFilters(Protos.ScanSettings proto) {
-    List<ScanFilter> filters;
-
-    int macCount = proto.getMacAddressesCount();
-    int serviceCount = proto.getServiceUuidsCount();
-    int count = macCount > 0 ? macCount : serviceCount;
-    filters = new ArrayList<>(count);
-
-    for (int i = 0; i < count; i++) {
-      ScanFilter f;
-      if (macCount > 0) {
-        String macAddress = proto.getMacAddresses(i);
-        f = new ScanFilter.Builder().setDeviceAddress(macAddress).build();
-      } else {
-        String uuid = proto.getServiceUuids(i);
-        f = new ScanFilter.Builder().setServiceUuid(ParcelUuid.fromString(uuid)).build();
-      }
+    int count = proto.getServiceUuidsCount();
+    List<ScanFilter> filters = new ArrayList<>(count);
+    for(int i = 0; i < count; i++) {
+      String uuid = proto.getServiceUuids(i);
+      ScanFilter f = new ScanFilter.Builder().setServiceUuid(ParcelUuid.fromString(uuid)).build();
       filters.add(f);
     }
-
-    return filters;
+    ScanSettings settings = new ScanSettings.Builder().setScanMode(scanMode).build();
+    scanner.startScan(filters, settings, getScanCallback21());
   }
 
   @TargetApi(21)
