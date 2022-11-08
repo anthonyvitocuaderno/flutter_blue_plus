@@ -24,7 +24,7 @@ class BluetoothDevice {
         type = type ?? BluetoothDeviceType.unknown;
 
   final BehaviorSubject<bool> _isDiscoveringServices =
-      BehaviorSubject.seeded(false);
+  BehaviorSubject.seeded(false);
   Stream<bool> get isDiscoveringServices => _isDiscoveringServices.stream;
 
   /// Establishes a connection to the Bluetooth Device.
@@ -32,35 +32,30 @@ class BluetoothDevice {
     Duration? timeout,
     bool autoConnect = true,
   }) async {
+    final completer = Completer<void>();
     var request = protos.ConnectRequest.create()
       ..remoteId = id.toString()
       ..androidAutoConnect = autoConnect;
 
+    Timer? timer;
+    if (timeout != null) {
+      timer = Timer(timeout, () {
+        disconnect();
+        completer.completeError(
+            TimeoutException('Failed to connect in time.', timeout));
+      });
+    }
+
     await FlutterBluePlus.instance._channel
         .invokeMethod('connect', request.writeToBuffer());
 
-    if (timeout == null) {
-      await state.firstWhere((s) => s == BluetoothDeviceState.connected);
-    } else {
-      await state
-          .firstWhere((s) => s == BluetoothDeviceState.connected)
-          .timeout(
-        timeout,
-        onTimeout: () {
-          disconnect();
-          throw TimeoutException('Failed to connect in time.', timeout);
-        },
-      );
-    }
-  }
+    await state.firstWhere((s) => s == BluetoothDeviceState.connected);
 
-  /// Send a pairing request to the device.
-  /// Currently only implemented on Android.
-  Future<void> pair() async {
-    if (Platform.isAndroid) {
-      return FlutterBluePlus.instance._channel
-          .invokeMethod('pair', id.toString());
-    }
+    timer?.cancel();
+
+    completer.complete();
+
+    return completer.future;
   }
 
   /// Cancels connection to the Bluetooth Device
@@ -68,7 +63,7 @@ class BluetoothDevice {
       .invokeMethod('disconnect', id.toString());
 
   final BehaviorSubject<List<BluetoothService>> _services =
-      BehaviorSubject.seeded([]);
+  BehaviorSubject.seeded([]);
 
   /// Discovers services offered by the remote device as well as their characteristics and descriptors
   Future<List<BluetoothService>> discoverServices() async {
@@ -105,7 +100,7 @@ class BluetoothDevice {
     yield await FlutterBluePlus.instance._channel
         .invokeMethod('services', id.toString())
         .then((buffer) =>
-            protos.DiscoverServicesResult.fromBuffer(buffer).services)
+    protos.DiscoverServicesResult.fromBuffer(buffer).services)
         .then((i) => i.map((s) => BluetoothService.fromProto(s)).toList());
     yield* _services.stream;
   }
@@ -186,9 +181,9 @@ class BluetoothDevice {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is BluetoothDevice &&
-          runtimeType == other.runtimeType &&
-          id == other.id;
+          other is BluetoothDevice &&
+              runtimeType == other.runtimeType &&
+              id == other.id;
 
   @override
   int get hashCode => id.hashCode;

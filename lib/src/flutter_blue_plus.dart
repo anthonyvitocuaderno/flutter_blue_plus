@@ -6,19 +6,13 @@ part of flutter_blue_plus;
 
 class FlutterBluePlus {
   final MethodChannel _channel =
-      const MethodChannel('flutter_blue_plus/methods');
+  const MethodChannel('flutter_blue_plus/methods');
   final EventChannel _stateChannel =
-      const EventChannel('flutter_blue_plus/state');
+  const EventChannel('flutter_blue_plus/state');
   final StreamController<MethodCall> _methodStreamController =
-      StreamController.broadcast(); // ignore: close_sinks
+  StreamController.broadcast(); // ignore: close_sinks
   Stream<MethodCall> get _methodStream => _methodStreamController
       .stream; // Used internally to dispatch methods from platform.
-
-  /// Cached broadcast stream for FlutterBlue.state events
-  /// Caching this stream allows for more than one listener to subscribe
-  /// and unsubscribe apart from each other,
-  /// while allowing events to still be sent to others that are subscribed
-  Stream<BluetoothState>? _stateStream;
 
   /// Singleton boilerplate
   FlutterBluePlus._() {
@@ -29,8 +23,12 @@ class FlutterBluePlus {
     setLogLevel(logLevel);
   }
 
-  static final FlutterBluePlus _instance = FlutterBluePlus._();
+  static FlutterBluePlus _instance = FlutterBluePlus._();
   static FlutterBluePlus get instance => _instance;
+
+  void reset() {
+    _instance = FlutterBluePlus._();
+  }
 
   /// Log level of the instance, default is all messages (debug).
   LogLevel _logLevel = LogLevel.debug;
@@ -39,10 +37,6 @@ class FlutterBluePlus {
   /// Checks whether the device supports Bluetooth
   Future<bool> get isAvailable =>
       _channel.invokeMethod('isAvailable').then<bool>((d) => d);
-
-  /// Return the friendly Bluetooth name of the local Bluetooth adapter
-  Future<String> get name =>
-      _channel.invokeMethod('name').then<String>((d) => d);
 
   /// Checks if Bluetooth functionality is turned on
   Future<bool> get isOn => _channel.invokeMethod('isOn').then<bool>((d) => d);
@@ -73,7 +67,7 @@ class FlutterBluePlus {
   Stream<bool> get isScanning => _isScanning.stream;
 
   final BehaviorSubject<List<ScanResult>> _scanResults =
-      BehaviorSubject.seeded([]);
+  BehaviorSubject.seeded([]);
 
   /// Returns a stream that is a list of [ScanResult] results while a scan is in progress.
   ///
@@ -93,13 +87,10 @@ class FlutterBluePlus {
         .then((buffer) => protos.BluetoothState.fromBuffer(buffer))
         .then((s) => BluetoothState.values[s.state.value]);
 
-    _stateStream ??= _stateChannel
+    yield* _stateChannel
         .receiveBroadcastStream()
         .map((buffer) => protos.BluetoothState.fromBuffer(buffer))
-        .map((s) => BluetoothState.values[s.state.value])
-        .doOnCancel(() => _stateStream = null);
-
-    yield* _stateStream!;
+        .map((s) => BluetoothState.values[s.state.value]);
   }
 
   /// Retrieve a list of connected devices
@@ -130,18 +121,18 @@ class FlutterBluePlus {
     ScanMode scanMode = ScanMode.lowLatency,
     List<Guid> withServices = const [],
     List<Guid> withDevices = const [],
-    List<String> macAddresses = const [],
     Duration? timeout,
     bool allowDuplicates = false,
   }) async* {
     var settings = protos.ScanSettings.create()
       ..androidScanMode = scanMode.value
       ..allowDuplicates = allowDuplicates
-      ..macAddresses.addAll(macAddresses)
       ..serviceUuids.addAll(withServices.map((g) => g.toString()).toList());
 
     if (_isScanning.value == true) {
-      throw Exception('Another scan is already in progress.');
+      print("You called scan again while a scan was already in progress.\n Clearing scan result list and starting a new scan.");
+      _scanResults.add(<ScanResult>[]);
+      // throw Exception('Another scan is already in progress.');
     }
 
     // Emit to isScanning
@@ -199,17 +190,15 @@ class FlutterBluePlus {
     ScanMode scanMode = ScanMode.lowLatency,
     List<Guid> withServices = const [],
     List<Guid> withDevices = const [],
-    List<String> macAddresses = const [],
     Duration? timeout,
     bool allowDuplicates = false,
   }) async {
     await scan(
-            scanMode: scanMode,
-            withServices: withServices,
-            withDevices: withDevices,
-            macAddresses: macAddresses,
-            timeout: timeout,
-            allowDuplicates: allowDuplicates)
+        scanMode: scanMode,
+        withServices: withServices,
+        withDevices: withDevices,
+        timeout: timeout,
+        allowDuplicates: allowDuplicates)
         .drain();
     return _scanResults.value;
   }
@@ -297,27 +286,25 @@ class ScanResult {
   ScanResult.fromProto(protos.ScanResult p)
       : device = BluetoothDevice.fromProto(p.device),
         advertisementData = AdvertisementData.fromProto(p.advertisementData),
-        rssi = p.rssi,
-        timeStamp = DateTime.now();
+        rssi = p.rssi;
 
   final BluetoothDevice device;
   final AdvertisementData advertisementData;
   final int rssi;
-  final DateTime timeStamp;
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is ScanResult &&
-          runtimeType == other.runtimeType &&
-          device == other.device;
+          other is ScanResult &&
+              runtimeType == other.runtimeType &&
+              device == other.device;
 
   @override
   int get hashCode => device.hashCode;
 
   @override
   String toString() {
-    return 'ScanResult{device: $device, advertisementData: $advertisementData, rssi: $rssi, timeStamp: $timeStamp}';
+    return 'ScanResult{device: $device, advertisementData: $advertisementData, rssi: $rssi}';
   }
 }
 
@@ -332,7 +319,7 @@ class AdvertisementData {
   AdvertisementData.fromProto(protos.AdvertisementData p)
       : localName = p.localName,
         txPowerLevel =
-            (p.txPowerLevel.hasValue()) ? p.txPowerLevel.value : null,
+        (p.txPowerLevel.hasValue()) ? p.txPowerLevel.value : null,
         connectable = p.connectable,
         manufacturerData = p.manufacturerData,
         serviceData = p.serviceData,
