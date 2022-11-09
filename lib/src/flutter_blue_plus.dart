@@ -23,8 +23,12 @@ class FlutterBluePlus {
     setLogLevel(logLevel);
   }
 
-  static final FlutterBluePlus _instance = FlutterBluePlus._();
+  static FlutterBluePlus _instance = FlutterBluePlus._();
   static FlutterBluePlus get instance => _instance;
+
+  void reset() {
+    _instance = FlutterBluePlus._();
+  }
 
   /// Log level of the instance, default is all messages (debug).
   LogLevel _logLevel = LogLevel.debug;
@@ -126,7 +130,9 @@ class FlutterBluePlus {
       ..serviceUuids.addAll(withServices.map((g) => g.toString()).toList());
 
     if (_isScanning.value == true) {
-      throw Exception('Another scan is already in progress.');
+      print("You called scan again while a scan was already in progress.\n Clearing scan result list and starting a new scan.");
+      _scanResults.add(<ScanResult>[]);
+      // throw Exception('Another scan is already in progress.');
     }
 
     // Emit to isScanning

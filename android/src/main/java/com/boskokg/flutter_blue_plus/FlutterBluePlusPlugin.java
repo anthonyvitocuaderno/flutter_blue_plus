@@ -31,6 +31,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.ParcelUuid;
 import android.util.Log;
+import java.lang.reflect.Method;
 
 import com.google.protobuf.ByteString;
 import com.google.protobuf.InvalidProtocolBufferException;
@@ -327,15 +328,15 @@ public class FlutterBluePlusPlugin implements FlutterPlugin, MethodCallHandler, 
           }
 
           // If device was connected to previously but is now disconnected, attempt a reconnect
-          BluetoothDeviceCache bluetoothDeviceCache = mDevices.get(deviceId);
-          if(bluetoothDeviceCache != null && !isConnected) {
-            if(bluetoothDeviceCache.gatt.connect()){
-              result.success(null);
-            } else {
-              result.error("reconnect_error", "error when reconnecting to device", null);
-            }
-            return;
-          }
+          BluetoothDeviceCache bluetoothDeviceCache = mDevices.remove(deviceId);//mDevices.get(deviceId);
+//          if(bluetoothDeviceCache != null && !isConnected) {
+//            if(bluetoothDeviceCache.gatt.connect()){
+//              result.success(null);
+//            } else {
+//              result.error("reconnect_error", "error when reconnecting to device", null);
+//            }
+//            return;
+//          }
 
           // New request, connect and add gattServer to Map
           BluetoothGatt gattServer;
@@ -344,6 +345,21 @@ public class FlutterBluePlusPlugin implements FlutterPlugin, MethodCallHandler, 
           } else {
             gattServer = device.connectGatt(context, options.getAndroidAutoConnect(), mGattCallback);
           }
+
+          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            try {
+              // BluetoothGatt gatt
+              final Method refresh = gattServer.getClass().getMethod("refresh");
+              if (refresh != null) {
+                log(LogLevel.DEBUG, "invoke method 'refresh' on gattServer.");
+                refresh.invoke(gattServer);
+                log(LogLevel.DEBUG, "invoked method 'refresh' on gattServer.");
+              }
+            } catch (Exception e) {
+              log(LogLevel.ERROR, "could not invoke method 'refresh' on gatt. " + e.toString());
+            }
+          }
+
           mDevices.put(deviceId, new BluetoothDeviceCache(gattServer));
           result.success(null);
         });
