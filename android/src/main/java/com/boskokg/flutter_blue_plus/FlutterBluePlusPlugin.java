@@ -323,8 +323,8 @@ public class FlutterBluePlusPlugin implements FlutterPlugin, MethodCallHandler, 
 
           // If device is already connected, return error
           if(mDevices.containsKey(deviceId) && isConnected) {
-            result.error("already_connected", "connection with device already exists", null);
-            return;
+//            result.error("already_connected", "connection with device already exists", null);
+//            return;
           }
 
           // If device was connected to previously but is now disconnected, attempt a reconnect
